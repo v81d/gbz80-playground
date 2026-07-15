@@ -28,7 +28,7 @@ ld c, 1
 .odd
   ; 3a + 1
   ld b, a
-  add a, b
+  sla a ; a = a << 1
   add a, b
   inc a
   jp .loop
