@@ -119,7 +119,7 @@ Read:
 
 .right
   ld a, [CursorX]
-  cp 72 ; at last keyboard column pos?
+  cp 104 ; at last keyboard column pos?
   ret z ; if so, don't move
 
   add 8
@@ -141,7 +141,7 @@ Read:
 
 .up
   ld a, [CursorY]
-  and a ; at top?
+  cp 8 ; at top?
   ret z ; if so, don't move
 
   sub 8
@@ -152,7 +152,7 @@ Read:
 
 .down
   ld a, [CursorY]
-  cp 24 ; at last keyboard row pos?
+  cp 32 ; at last keyboard row pos?
   ret z ; if so, don't move
 
   add 8
@@ -248,7 +248,10 @@ EntryPoint:
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; -- tiles start here
 
-  ld de, TilesKeyboardNumbers
+  ld de, TilesDivider
+  call PrintDE
+
+  ld de, TilesKeyboardRow0
   call PrintDE
 
   ; newline
@@ -286,6 +289,7 @@ EntryPoint:
 .entry
   xor a
   ld [CursorX], a
+  ld a, 8
   ld [CursorY], a
 
 .startup
@@ -310,24 +314,31 @@ Newline:
   db $FE
   db $FF
 
-TilesKeyboardNumbers:
+TilesKeyboardRow0:
   db TILE_0, TILE_1, TILE_2, TILE_3, TILE_4, TILE_5, TILE_6, TILE_7, TILE_8, TILE_9
+  db TILE_HYPHN, TILE_LPREN, TILE_RPREN
+  db TILE_BACK
   db $FF
 
 TilesKeyboardRowQ:
   db TILE_Q, TILE_W, TILE_E, TILE_R, TILE_T, TILE_Y, TILE_U, TILE_I, TILE_O, TILE_P
+  db TILE_DBQOT, TILE_SGQOT, TILE_PIPE, TILE_FSLSH
   db $FF
 
 TilesKeyboardRowA:
-  db TILE_A, TILE_S, TILE_D, TILE_F, TILE_G, TILE_H, TILE_J, TILE_K, TILE_L, TILE_EXCLP
+  db TILE_A, TILE_S, TILE_D, TILE_F, TILE_G, TILE_H, TILE_J, TILE_K, TILE_L
+  db TILE_EXCLP, TILE_QSTNP, TILE_LBRKT, TILE_RBRKT
+  db TILE_ENTER
   db $FF
 
 TilesKeyboardRowZ:
-  db TILE_Z, TILE_X, TILE_C, TILE_V, TILE_B, TILE_N, TILE_M, TILE_COMMA, TILE_PERIOD, TILE_SPIND
+  db TILE_Z, TILE_X, TILE_C, TILE_V, TILE_B, TILE_N, TILE_M
+  db TILE_COMMA, TILE_PERIOD, TILE_COLON, TILE_SMCOL, TILE_PLUS, TILE_MINUS
+  db TILE_SPIND
   db $FF
 
 TilesDivider:
-  db TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN, TILE_UNDLN
+  db TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN, TILE_HZLIN
   db $FF
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; -- tile maps end here
