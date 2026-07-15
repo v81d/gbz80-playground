@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>GBZ80 Tile Editor</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        #editor-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #palette {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .palette-swatch {
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            border: 2px solid #ccc;
+            box-sizing: border-box;
+        }
+
+        .palette-swatch.selected {
+            border: 2px solid #ff0000;
+            outline: 1px solid #000;
+        }
+        
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(8, 35px);
+            grid-template-rows: repeat(8, 35px);
+            gap: 2px;
+            background: #ccc;
+            padding: 2px;
+            border: 2px solid #333;
+            touch-action: none;
+        }
+        
+        .pixel {
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-sizing: border-box;
+        }
+        
+        /* Palette colors */
+        .color-0 { background-color: #e0f8cf; } /* white */
+        .color-1 { background-color: #86c06c; } /* light gray */
+        .color-2 { background-color: #306850; } /* dark gray */
+        .color-3 { background-color: #071821; } /* black */
+
+        #output-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex-grow: 1;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 220px;
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        
+        input {
+            padding: 5px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="editor-container">
+        <div>
+            <label>Tile Name: </label>
+            <input type="text" id="tile-name" value="TILE_A">
+        </div>
+
+        <div id="palette">
+            <span style="margin-right: 5px;">Color:</span>
+            <div class="palette-swatch color-0" data-color="0"></div>
+            <div class="palette-swatch color-1" data-color="1"></div>
+            <div class="palette-swatch color-2" data-color="2"></div>
+            <div class="palette-swatch color-3 selected" data-color="3"></div>
+        </div>
+
+        <div id="grid"></div>
+        <button id="clear-btn">Clear Grid</button>
+    </div>
+
+    <div id="output-container">
+        <label>GBZ80:</label>
+        <textarea id="output" readonly></textarea>
+    </div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const output = document.getElementById('output');
+        const tileNameInput = document.getElementById('tile-name');
+        const clearBtn = document.getElementById('clear-btn');
+        const paletteSwatches = document.querySelectorAll('.palette-swatch');
+
+        let pixels = Array(64).fill(0);
+        let activeColor = 3; 
+        let isMouseDown = false; 
+
+        paletteSwatches.forEach(swatch => {
+            swatch.addEventListener('click', () => {
+                paletteSwatches.forEach(s => s.classList.remove('selected'));
+                activeColor = parseInt(swatch.dataset.color);
+                swatch.classList.add('selected');
+            });
+        });
+
+        grid.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousedown', () => {
+            isMouseDown = true;
+        });
+        window.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        function drawPixel(index, element) {
+            pixels[index] = activeColor;
+            updatePixelClass(element, activeColor);
+            generateASM();
+        }
+
+        function createGrid() {
+            grid.innerHTML = '';
+            for (let i = 0; i < 64; i++) {
+                const pixel = document.createElement('div');
+                pixel.classList.add('pixel', 'color-0');
+                pixel.dataset.index = i;
+                
+                pixel.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    isMouseDown = true;
+                    drawPixel(i, pixel);
+                });
+
+                pixel.addEventListener('mouseenter', () => {
+                    if (isMouseDown) {
+                        drawPixel(i, pixel);
+                    }
+                });
+
+                grid.appendChild(pixel);
+            }
+        }
+
+        function updatePixelClass(element, colorIndex) {
+            element.className = 'pixel'; 
+            element.classList.add(`color-${colorIndex}`);
+        }
+
+        function toHexByte(num) {
+            return '$' + num.toString(16).toUpperCase().padStart(2, '0');
+        }
+
+        function generateASM() {
+            const tileName = tileNameInput.value.trim() || "TILE_A";
+            let asm = `; ${tileName}\n`;
+
+            for (let row = 0; row < 8; row++) {
+                let lowByte = 0;
+                let highByte = 0;
+
+                for (let col = 0; col < 8; col++) {
+                    const pixelIndex = row * 8 + col;
+                    const colorVal = pixels[pixelIndex]; 
+
+                    const bit0 = colorVal & 1;
+                    const bit1 = (colorVal >> 1) & 1;
+
+                    const shift = 7 - col;
+                    lowByte |= (bit0 << shift);
+                    highByte |= (bit1 << shift);
+                }
+
+                asm += `db ${toHexByte(lowByte)}, ${toHexByte(highByte)}\n`;
+            }
+
+            output.value = asm;
+        }
+
+        clearBtn.addEventListener('click', () => {
+            pixels.fill(0);
+            const elements = document.querySelectorAll('.pixel');
+            elements.forEach((el, idx) => updatePixelClass(el, 0));
+            generateASM();
+        });
+
+        tileNameInput.addEventListener('input', generateASM);
+
+        createGrid();
+        generateASM();
+    </script>
+</body>
+
+</html>
