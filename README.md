@@ -16,3 +16,9 @@ I documented the code heavily with comments for my own reference, but hopefully 
 Special thanks to [gbdev.io](https://gbdev.io) for providing precise technical documentation for the Game Boy.
 
 Also, I'd like to acknowledge the [Game Boy Coding Adventure](https://nostarch.com/game-boy-coding-adventure) book by Maximilien Dagois for providing beginner-friendly technical explanations of the Game Boy (including the hardware layout and assembly language instructions).
+
+## License
+
+This is free and unencumbered software released into the public domain under the Unlicense. You are free to modify, copy, publish, use, compile, sell, or distribute this software for both commercial and non-commercial purposes.
+
+For more details, see the [LICENSE](LICENSE) file.
