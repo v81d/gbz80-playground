@@ -6,6 +6,9 @@ SECTION "Variables", WRAM0
 
 CursorX: db
 CursorY: db
+CurrentCharacterPos: dw
+CurrentKeyboardRow: db
+CurrentKeyboardCol: db
 
 SECTION "Header", ROM0[$100]
   jp EntryPoint
@@ -31,7 +34,7 @@ ClearBG:
   ld hl, $9800 ; set hl to the start of the background grid
   ld bc, $400 ; we must erase $400 (1024) bytes
 
-.clear:
+.clear
   xor a ; A XOR A = set a to 0
   ld [hli], a ; set the current background grid byte to 0 and increment hl
   dec bc ; decrement the number of bytes left to erase
@@ -79,9 +82,9 @@ PrintDE:
 
   jr .loop
 
-AwaitRelease:
+AwaitReleaseDPad:
 .await
-  ld a, $20
+  ld a, %00100000
   ld [_IO], a
 
   ld a, [_IO]
@@ -92,73 +95,114 @@ AwaitRelease:
 
   ret ; otherwise, allow next instruction
 
-Read:
+AwaitReleaseActions:
+.await
+  ld a, %00010000
+  ld [_IO], a
+
+  ld a, [_IO]
+  and %1100
+  cp %1100
+  jr nz, .await
+
+  ret
+
+ReadDPad:
   ; D-pad mode (directions)
-  ld a, $20
+  ld a, %00100000
   ld [_IO], a
 
   ld a, [_IO] ; load $FF00 into a
-  and %0001 ; only flag Z if right bit is 1
+  bit 0, a  ; only flag Z if right bit is 1
             ; 0 = pressed, 1 = released
             ; the AND result will be %...1 (NZ) if right is released, and $...0 (Z) if right is pressed
   jr z, .right
 
   ld a, [_IO]
-  and %0010
+  bit 1, a
   jr z, .left
 
   ld a, [_IO]
-  and %0100
+  bit 2, a
   jr z, .up
 
   ld a, [_IO]
-  and %1000
+  bit 3, a
   jr z, .down
 
   ret
 
 .right
-  ld a, [CursorX]
-  cp 104 ; at last keyboard column pos?
+  ld a, [CurrentKeyboardCol]
+  cp 13 ; at last keyboard column pos?
   ret z ; if so, don't move
 
+  inc a
+  ld [CurrentKeyboardCol], a
+
+  ld a, [CursorX]
   add 8
   ld [CursorX], a
 
-  call AwaitRelease
+  call AwaitReleaseDPad
   ret
 
 .left
-  ld a, [CursorX]
+  ld a, [CurrentKeyboardCol]
   and a ; at start?
   ret z ; if so, don't move
 
+  dec a
+  ld [CurrentKeyboardCol], a
+
+  ld a, [CursorX]
   sub 8
   ld [CursorX], a
-
-  call AwaitRelease
+  
+  call AwaitReleaseDPad
   ret
 
 .up
-  ld a, [CursorY]
-  cp 8 ; at top?
+  ld a, [CurrentKeyboardRow]
+  and a ; at top?
   ret z ; if so, don't move
 
+  dec a
+  ld [CurrentKeyboardRow], a
+
+  ld a, [CursorY]
   sub 8
   ld [CursorY], a
 
-  call AwaitRelease
+  call AwaitReleaseDPad
   ret
 
 .down
-  ld a, [CursorY]
-  cp 32 ; at last keyboard row pos?
+  ld a, [CurrentKeyboardRow]
+  cp 3 ; at last keyboard row pos?
   ret z ; if so, don't move
 
+  inc a
+  ld [CurrentKeyboardRow], a
+
+  ld a, [CursorY]
   add 8
   ld [CursorY], a
 
-  call AwaitRelease
+  call AwaitReleaseDPad
+  ret
+
+ReadActions:
+  ld a, %00010000 ; select mode
+  ld [_IO], a
+
+  ld a, [_IO]
+  bit 2, a ; select button
+  ret nz
+
+.select
+  call PrintCurrentCharacter
+  call AwaitReleaseActions
   ret
 
 AwaitVBlank:
@@ -181,8 +225,8 @@ DrawCursor:
   ; | | | |
   ; | | | attributes
   ; | | tile number
-  ; | X position
-  ; Y position
+  ; | x-position
+  ; y-position
 
   ; we must offset Y by 16 and X by 8 because of how OAM works on the DMG
 
@@ -199,6 +243,267 @@ DrawCursor:
 
   xor a
   ld [hl], a ; attributes (last bit)
+
+  ret
+
+DrawTypingIndicator:
+  ; set hl to current char pos
+  ld a, [CurrentCharacterPos]
+  ld l, a
+  ld a, [CurrentCharacterPos + 1]
+  ld h, a
+
+  ; text starts at $98C0
+  ; bc becomes this
+  ld bc, _SCRN0 + (32 * 6)
+  ; c is $C0 (192)
+
+  ; subtract $C0 from current char pos
+  ld a, l
+  sub c ; this might carry if current char pos < $C0
+  ld l, a
+
+  ld a, h
+  sbc b ; subtract b and carry flag (1 or 0) from a (to compensate for the carry)
+  ld h, a
+  ; result (hl) should now be the distance between the top of the page and the current location
+
+  ; copy offset to bc
+  ld a, l
+  ld c, a
+  ld a, h
+  ld b, a
+  ; bc is now the distance as well
+
+  ; y-pos = (offset >> 5) * 8 to get pixels
+
+  ; offset >> 5 = offset // 2^5 = row number
+  srl b
+  rr c ; must carry the bit that fell off from b
+  srl b
+  rr c
+  srl b
+  rr c
+  srl b
+  rr c
+  srl b
+  rr c
+
+  ; row * 8 + 48
+  ld a, c
+  add a
+  add a
+  add a
+  add 48
+  ld d, a
+  ; d = y-pos
+
+  ; x-pos = (offset AND 31) * 8
+  ld a, l
+  and %00011111 ; 31 to keep the last 5 bits only (to get the col)
+  add a, a
+  add a, a
+  add a, a
+  ld e, a
+  ; e = x-pos
+
+  ; write sprite
+  ld hl, _OAMRAM + 4 ; +4 for next
+
+  ld a, d
+  add 16
+  ld [hli], a
+
+  ld a, e
+  add 8
+  ld [hli], a
+
+  ld a, TILE_TPIND
+  ld [hli], a
+
+  xor a
+  ld [hl], a
+
+  ret
+
+PrintCurrentCharacter:
+  ld a, [CurrentKeyboardRow]
+
+  ; row 0
+  and a
+  jr z, .row_0
+
+  ; row 1
+  cp 1
+  jr z, .row_1
+
+  ; row 2
+  cp 2
+  jr z, .row_2
+
+  ; row 3
+  cp 3
+  jr z, .row_3
+
+.row_0
+  ld hl, TilesKeyboardRow0
+  jr .write_char
+
+.row_1
+  ld hl, TilesKeyboardRowQ
+  jr .write_char
+
+.row_2
+  ld hl, TilesKeyboardRowA
+  jr .write_char
+
+.row_3
+  ld hl, TilesKeyboardRowZ
+  jr .write_char
+
+.write_char ; loop through tile arrays to get char data
+  ld a, [CurrentKeyboardCol] ; set counter
+
+.loop
+  and a ; if a == 0, jump to .done
+  jr z, .print
+
+  inc hl ; next character
+  dec a
+  jr .loop
+
+.print
+  ld a, [hl] ; a is now the character to be printed
+  ld b, a
+
+  ; get char pos back
+  ld a, [CurrentCharacterPos]
+  ld l, a
+  ld a, [CurrentCharacterPos + 1]
+  ld h, a
+
+  ld a, b ; get char back
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; -- EXCEPTIONS LIST STARTS HERE !!!!
+
+  ; right now, hl is the character pos and a is the char
+
+  cp TILE_BACK
+  jr z, .backspace
+
+  ; check if at last pos
+  ; last pos is at $9A33 (19, 17)
+  ; we actually don't want to let the user fill the last tile because it would push the indicator out
+  ld a, h
+  cp $9A ; compare with last high byte
+  jr c, .print_backspace_not_end ; less than $9A (ok)
+
+  ld a, l
+  cp $33 ; compare with last low byte
+  ret z
+
+.print_backspace_not_end
+  ld a, b ; get char back
+
+  cp TILE_ENTER
+  jr z, .enter
+
+  ; check if at last col
+  ; if so, don't write to last col and simply create a new line
+  ld a, l
+  and %00011111 ; last 5 bits is col
+  cp 19 ; 19 is last col
+  jp nz, .print_char_not_end ; if pos != 19, write the char normally
+
+  ; create a newline
+  ld de, 13
+  add hl, de
+
+.print_char_not_end
+  ld a, b ; get char back again
+
+  cp TILE_SPIND
+  jr z, .space
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; -- EXCEPTIONS LIST ENDS HERE !!!!
+  
+  ld [hli], a ; print char
+  jr .finalize
+
+.backspace
+  ; first pos = $98C0
+  ld a, h ; current char pos
+  cp $98 ; is first row?
+  jp nz, .backspace_not_end ; if not, continue
+
+  ld a, l
+  cp $C0 ; is first col?
+  ret z ; if so, cancel
+
+.backspace_not_end
+  ld a, l
+  and %00011111
+  jr z, .backspace_back_visible ; if col is 0, skip the extra 12 hidden tiles
+
+  ; normal case: just go back one tile
+  dec hl
+  ld a, TILE_SPACE
+  ld [hl], a
+  jr .finalize
+
+.backspace_back_visible
+  ld b, 13 ; 12 hidden tiles + the last tile
+
+  ; HL -= 11
+  ld a, l
+  sub b
+  ld l, a
+
+  ld a, h
+  sbc 0 ; subtract the carry from the high byte
+  ld h, a
+
+  jr .finalize
+
+.enter
+  ; check if already at last line
+  ; first address at last line = $9A20 (0, 17)
+  ld a, h
+  cp $9A
+  jp c, .enter_not_end ; less than $9A (ok)
+
+  ld a, l
+  cp $20  ; we want to check if a (low byte) >= $20
+  ret nc  ; only a == val and a > value result in a carry of 0, so nc means >=
+          ; if a >= $20, then the pos is already at the last line
+
+.enter_not_end
+  ; get current column from hl
+  ld a, l
+  and %00011111 ; keep only column bits (0-31)
+
+  ld c, a
+  ld a, 32
+  sub c ; a is now the # of tiles remaining until next row
+
+  ld c, a ; set c to a
+  ld b, 0 ; construct bc = c = a
+
+  add hl, bc  ; move hl to start of next row
+              ; add bc = c = a to hl
+
+  jr .finalize
+
+.space
+  ld a, TILE_SPACE
+  ld [hli], a
+  jr .finalize
+
+.finalize
+  ld a, l
+  ld [CurrentCharacterPos], a
+  ld a, h
+  ld [CurrentCharacterPos + 1], a
 
   ret
 
@@ -284,13 +589,21 @@ EntryPoint:
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; -- tiles end here
 
-  call DrawCursor
-
 .entry
   xor a
+
+  ld [CurrentKeyboardRow], a
+  ld [CurrentKeyboardCol], a
+
   ld [CursorX], a
   ld a, 8
   ld [CursorY], a
+
+  ld hl, _SCRN0 + (32 * 6) ; 32 rows * 6 columns to get under the divider
+  ld a, l
+  ld [CurrentCharacterPos], a
+  ld a, h
+  ld [CurrentCharacterPos + 1], a
 
 .startup
   ; now everything is in VRAM and background
@@ -301,8 +614,10 @@ EntryPoint:
 
 .loop
   call AwaitVBlank ; TODO: might be unnecessary for now?
-  call Read
+  call ReadDPad
+  call ReadActions
   call DrawCursor
+  call DrawTypingIndicator
   jr .loop
 
 .done
