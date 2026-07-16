@@ -2,6 +2,9 @@
 
 The original [Game Boy](https://en.wikipedia.org/wiki/Game_Boy) operates using a modified Z80 processor. This repository includes the Game Boy apps I created along my journey to learn GBZ80 programming.
 
+![Typewriter](screenshots/typewriter.png)
+![Hello, World!](screenshots/hello_world.png)
+
 ## Statistics
 
 Here are some statistics for my work in this repository:
